@@ -21,9 +21,11 @@ if (file_exists(__DIR__ . '/vendor/autoload.php')) {
 // Initialize the plugin
 add_action('wp_loaded', function () {
     if (class_exists('SigmaSignet\Plugin')) {
-        SigmaSignet\Plugin::getInstance();
-        $this->settings->debugLog('Sigma Signet Plugin Loaded (with Plugin class)');
+        $plugin = SigmaSignet\Plugin::getInstance();
+        if (isset($plugin->settings)) {
+            $plugin->settings->debugLog('Sigma Signet Plugin Loaded (with Plugin class)');
+        }
     } else {
-        $this->settings->debugLog('Sigma Signet Plugin Loaded (Plugin class not found)');
+        error_log('Sigma Signet Plugin Loaded (Plugin class not found)');
     }
 });
