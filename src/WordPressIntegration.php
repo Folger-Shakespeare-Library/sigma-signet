@@ -81,7 +81,7 @@ class WordPressIntegration
             return;
         }
 
-        error_log('SIGMA callback route detected');
+        $this->settings->debugLog('SIGMA callback route detected');
 
         // Check for error parameter
         if (isset($_GET['error'])) {
@@ -93,7 +93,7 @@ class WordPressIntegration
         // Check for authorization code
         if (isset($_GET['code'])) {
             $code = sanitize_text_field($_GET['code']);
-            error_log("SIGMA authentication code received: {$code}");
+            $this->settings->debugLog("SIGMA authentication code received: {$code}");
 
             // Exchange code for tokens
             $tokens = $this->tokenExchange->exchangeCodeForTokens($code);
@@ -108,7 +108,7 @@ class WordPressIntegration
             }
 
             // Log the user information we received
-            error_log('SIGMA user authenticated: ' . json_encode([
+            $this->settings->debugLog('SIGMA user authenticated: ' . json_encode([
                 'sub' => $userInfo['sub'] ?? 'unknown',
                 'name' => $userInfo['name'] ?? 'unknown',
                 'email' => $userInfo['email'] ?? 'unknown'
