@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+    bootstrap="tests/bootstrap.php"
+    colors="true"
+>
+    <testsuites>
+        <testsuite name="Plugin">
+            <!-- Let Pest discover tests in the whole tests/ tree -->
+            <directory>./tests</directory>
+        </testsuite>
+    </testsuites>
+
+    <!-- Optional but handy -->
+    <php>
+        <ini name="error_reporting" value="-1"/>
+        <ini name="display_errors" value="1"/>
+        <const name="DISABLE_WP_CRON" value="1"/>
+    </php>
+</phpunit>
