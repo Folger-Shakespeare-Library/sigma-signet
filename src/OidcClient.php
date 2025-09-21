@@ -1,0 +1,69 @@
+<?php
+
+namespace SigmaSignet;
+
+/**
+ * OIDC Client for SIGMA authentication
+ */
+class OidcClient
+{
+    private Settings $settings;
+    private TokenGenerator $tokenGenerator;
+
+    public function __construct(Settings $settings, TokenGenerator $tokenGenerator)
+    {
+        $this->settings = $settings;
+        $this->tokenGenerator = $tokenGenerator;
+    }
+
+    /**
+     * Build authorization URL for OIDC authentication
+     *
+     * @param string $ipAddress User's IP address
+     * @param string|null $referrerUrl Optional referrer URL
+     * @return string|null Authorization URL or null if not configured
+     */
+    public function buildAuthorizationUrl(string $ipAddress, ?string $referrerUrl = null): ?string
+    {
+        if (!$this->settings->isConfigured()) {
+            error_log('Cannot build authorization URL: settings not configured');
+            return null;
+        }
+
+        $authToken = $this->tokenGenerator->generateAuthToken();
+        if (!$authToken) {
+            error_log('Cannot build authorization URL: failed to generate auth token');
+            return null;
+        }
+
+        $params = [
+            'auth_token' => $authToken,
+            'client_id' => $this->settings->get('client_id'),
+            'ip_address' => $ipAddress,
+            'prompt' => 'login',
+            'redirect_uri' => $this->settings->get('redirect_uri'),
+            'response_type' => 'code',
+            'scope' => 'openid profile email license profile_extended offline_access',
+        ];
+
+        // Add optional referrer URL if provided
+        if ($referrerUrl) {
+            $params['referrer_url'] = $referrerUrl;
+        }
+
+        $baseUrl = rtrim($this->settings->get('idp_url'), '/') . '/authorize';
+        $url = $baseUrl . '?' . http_build_query($params);
+
+        $this->settings->debugLog("Built authorization URL for client_id: " . $this->settings->get('client_id'));
+
+        return $url;
+    }
+
+    /**
+     * Check if client can build authorization URLs
+     */
+    public function isReady(): bool
+    {
+        return $this->settings->isConfigured() && $this->tokenGenerator->canGenerateToken();
+    }
+}

@@ -1,0 +1,21 @@
+# Dependencies
+/vendor/
+/node_modules/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# WordPress
+wp-config.php
+.htaccess
+
+# Testing
+/coverage/
+/.pest/
