@@ -158,8 +158,16 @@ class WordPressIntegration
 
             $this->settings->debugLog("Successfully exchanged code for tokens");
 
+            // Get user info using the access token
+            $userInfo = $this->tokenExchange->getUserInfo($tokens['access_token']);
+            if (!$userInfo) {
+                wp_die('Failed to retrieve user information.');
+            }
+
+            $this->settings->debugLog("Retrieved user info: " . json_encode($userInfo));
+
             // Create or update WordPress user
-            $user = $this->userManager->createOrUpdateUser($tokens['userInfo']);
+            $user = $this->userManager->findOrCreateUser($userInfo);
             if (!$user) {
                 wp_die('Failed to create or update user.');
             }
