@@ -60,6 +60,50 @@ class OidcClient
     }
 
     /**
+     * Build authorization URL for IP-based authentication (transparent/implicit)
+     * Uses prompt=none to attempt automatic authentication without showing login screen
+     *
+     * @param string $ipAddress User's IP address
+     * @param string|null $referrerUrl Optional referrer URL
+     * @return string|null Authorization URL or null if not configured
+     */
+    public function buildIpAuthUrl(string $ipAddress, ?string $referrerUrl = null): ?string
+    {
+        if (!$this->settings->isConfigured()) {
+            error_log('Cannot build IP auth URL: settings not configured');
+            return null;
+        }
+
+        $authToken = $this->tokenGenerator->generateAuthToken();
+        if (!$authToken) {
+            error_log('Cannot build IP auth URL: failed to generate auth token');
+            return null;
+        }
+
+        $params = [
+            'auth_token' => $authToken,
+            'client_id' => $this->settings->get('client_id'),
+            'ip_address' => $ipAddress,
+            'prompt' => 'none', // This is the key difference - no login screen
+            'redirect_uri' => $this->settings->get('redirect_uri'),
+            'response_type' => 'code',
+            'scope' => 'openid profile email license profile_extended offline_access',
+        ];
+
+        // Add optional referrer URL if provided
+        if ($referrerUrl) {
+            $params['referrer_url'] = $referrerUrl;
+        }
+
+        $baseUrl = rtrim($this->settings->get('idp_url'), '/') . '/authorize';
+        $url = $baseUrl . '?' . http_build_query($params);
+
+        $this->settings->debugLog("Built IP auth URL (prompt=none) for client_id: " . $this->settings->get('client_id'));
+
+        return $url;
+    }
+
+    /**
      * Check if client can build authorization URLs
      */
     public function isReady(): bool

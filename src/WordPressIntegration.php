@@ -25,8 +25,52 @@ class WordPressIntegration
      */
     public function init(): void
     {
+        add_action('template_redirect', [$this, 'handleIpAuthentication'], 5);
         add_action('template_redirect', [$this, 'handleLoginRoute']);
         add_action('template_redirect', [$this, 'handleCallbackRoute']);
+    }
+
+    /**
+     * Attempt IP-based authentication if not already attempted this session
+     */
+    public function handleIpAuthentication(): void
+    {
+        // Skip if user is already logged in
+        if (is_user_logged_in()) {
+            return;
+        }
+
+        // Skip if we've already attempted IP auth this session
+        if ($this->settings->hasAttemptedIpAuth()) {
+            return;
+        }
+
+        // Skip if OIDC is not configured
+        if (!$this->oidcClient->isReady()) {
+            return;
+        }
+
+        // Mark that we're attempting IP auth to avoid loops
+        $this->settings->markIpAuthAttempted();
+
+        // Get user's IP address
+        $ipAddress = $this->getUserIP();
+
+        // Get referrer if available
+        $referrer = wp_get_referer();
+
+        // Build IP authentication URL (with prompt=none)
+        $authUrl = $this->oidcClient->buildIpAuthUrl($ipAddress, $referrer);
+
+        if (!$authUrl) {
+            return;
+        }
+
+        $this->settings->debugLog("Attempting IP authentication for IP: {$ipAddress}");
+
+        // Redirect to SIGMA for IP auth
+        wp_redirect($authUrl);
+        exit;
     }
 
     /**
@@ -86,6 +130,17 @@ class WordPressIntegration
         // Check for error parameter
         if (isset($_GET['error'])) {
             $error = sanitize_text_field($_GET['error']);
+            $this->settings->debugLog("SIGMA authentication error: {$error}");
+
+            // If this is login_required, it means IP auth failed (user not recognized by IP)
+            // This is expected behavior for prompt=none, so just redirect to home
+            if ($error === 'login_required') {
+                $this->settings->debugLog("IP authentication failed (login_required) - redirecting to home");
+                wp_redirect(home_url());
+                exit;
+            }
+
+            // For other errors, show error page
             error_log("SIGMA authentication error: {$error}");
             wp_die('Authentication failed: ' . esc_html($error));
         }
@@ -101,78 +156,42 @@ class WordPressIntegration
                 wp_die('Failed to exchange authorization code for tokens.');
             }
 
-            // Get user info
-            $userInfo = $this->tokenExchange->getUserInfo($tokens['access_token']);
-            if (!$userInfo) {
-                wp_die('Failed to retrieve user information.');
+            $this->settings->debugLog("Successfully exchanged code for tokens");
+
+            // Create or update WordPress user
+            $user = $this->userManager->createOrUpdateUser($tokens['userInfo']);
+            if (!$user) {
+                wp_die('Failed to create or update user.');
             }
 
-            // Log the user information we received
-            $this->settings->debugLog('SIGMA user authenticated: ' . json_encode([
-                'sub' => $userInfo['sub'] ?? 'unknown',
-                'name' => $userInfo['name'] ?? 'unknown',
-                'email' => $userInfo['email'] ?? 'unknown'
-            ]));
-
-            // Find or create WordPress user
-            $wpUser = $this->userManager->findOrCreateUser($userInfo);
-            if (!$wpUser) {
-                wp_die('Failed to create or find WordPress user.');
-            }
+            $this->settings->debugLog("User created/updated: {$user->user_login}");
 
             // Log the user in
-            if (!$this->userManager->loginUser($wpUser)) {
-                wp_die('Failed to log in user.');
-            }
+            wp_set_auth_cookie($user->ID);
 
-            // Redirect to admin or home page
-            $redirectUrl = is_admin() ? admin_url() : home_url();
-            wp_redirect($redirectUrl);
+            $this->settings->debugLog("User logged in successfully, redirecting to home");
+
+            // Redirect to home page
+            wp_redirect(home_url());
             exit;
         }
 
-        // No code or error - something went wrong
-        wp_die('Invalid callback - no code or error received.');
-    }
-    public function addLoginLink(): void
-    {
-        if (!$this->oidcClient->isReady()) {
-            return;
-        }
-
-        $loginUrl = add_query_arg('sigma_login', '1', home_url());
-        echo '<div style="position: fixed; top: 10px; right: 10px; background: #0073aa; color: white; padding: 10px; z-index: 9999;">';
-        echo '<a href="' . esc_url($loginUrl) . '" style="color: white; text-decoration: none;">SIGMA Login</a>';
-        echo '</div>';
+        // If we get here, something unexpected happened
+        $this->settings->debugLog("Callback reached with no code or error");
+        wp_die('Invalid callback request.');
     }
 
     /**
-     * Get user's IP address
+     * Get user's IP address, accounting for proxies
      */
     private function getUserIP(): string
     {
-        // Check for IP from various headers
-        $headers = [
-            'HTTP_X_FORWARDED_FOR',
-            'HTTP_X_REAL_IP',
-            'HTTP_CLIENT_IP',
-            'REMOTE_ADDR'
-        ];
-
-        foreach ($headers as $header) {
-            if (!empty($_SERVER[$header])) {
-                $ip = $_SERVER[$header];
-                // Handle comma-separated IPs (from proxies)
-                if (strpos($ip, ',') !== false) {
-                    $ip = trim(explode(',', $ip)[0]);
-                }
-                if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-                    return $ip;
-                }
-            }
+        // Check for proxy headers first
+        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $ipList = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+            return trim($ipList[0]);
         }
 
-        // Fallback to REMOTE_ADDR
-        return $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        return $_SERVER['REMOTE_ADDR'] ?? '';
     }
 }
