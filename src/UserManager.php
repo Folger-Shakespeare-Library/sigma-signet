@@ -15,36 +15,67 @@ class UserManager
      */
     public function findOrCreateUser(array $userInfo): ?\WP_User
     {
-        $sigmaId = $userInfo['sub'] ?? null;
-        $email = $userInfo['email'] ?? null;
-        $name = $userInfo['name'] ?? null;
+        // Determine authentication type
+        $authType = $userInfo['authentication_type'] ?? 'unknown';
 
-        if (!$sigmaId) {
-            error_log('Cannot create user: missing sub (SIGMA ID)');
+        // Extract profile information based on authentication type
+        $profileData = $this->extractProfileData($userInfo, $authType);
+
+        if (!$profileData) {
+            error_log('SIGMA OIDC: Cannot create user - failed to extract profile data');
             return null;
         }
 
-        // Find user by username (which is the SIGMA ID)
-        $existingUser = get_user_by('login', $sigmaId);
-        if ($existingUser) {
-            error_log("Found existing user: {$existingUser->ID}");
+        $profileId = $profileData['profileId'];
+        $profileName = $profileData['profileName'];
+        $username = 'profile_' . $profileId;
 
-            // Update display name if it's different (user info might have changed in SIGMA)
-            if ($name && $existingUser->display_name !== $name) {
+        // Find user by username (which is profile_{profileId})
+        $existingUser = get_user_by('login', $username);
+        if ($existingUser) {
+            // Update display name and first_name if different
+            if ($profileName && $existingUser->display_name !== $profileName) {
                 wp_update_user([
                     'ID' => $existingUser->ID,
-                    'display_name' => $name,
-                    'first_name' => $this->extractFirstName($name),
-                    'last_name' => $this->extractLastName($name),
+                    'display_name' => $profileName,
+                    'first_name' => $profileName,
                 ]);
-                error_log("Updated user display name for user {$existingUser->ID}");
             }
 
             return $existingUser;
         }
 
-        // Create new user
-        return $this->createNewUser($sigmaId, $email, $name);
+        // User doesn't exist, create new one
+        return $this->createNewUser($profileId, $profileName, $authType, $userInfo);
+    }
+
+    /**
+     * Extract profile data based on authentication type
+     */
+    private function extractProfileData(array $userInfo, string $authType): ?array
+    {
+        $authenticatedProfiles = $userInfo['authenticated_profiles'] ?? [];
+
+        // For named authentication, use individual profile
+        if ($authType === 'named' && isset($authenticatedProfiles['individualProfile'])) {
+            $profile = $authenticatedProfiles['individualProfile'];
+            return [
+                'profileId' => $profile['profileId'] ?? null,
+                'profileName' => $profile['profileName'] ?? null,
+            ];
+        }
+
+        // For anonymous authentication, use first organization profile
+        if ($authType === 'anonymous' && isset($authenticatedProfiles['organizationProfiles'][0])) {
+            $profile = $authenticatedProfiles['organizationProfiles'][0];
+            return [
+                'profileId' => $profile['profileId'] ?? null,
+                'profileName' => $profile['profileName'] ?? null,
+            ];
+        }
+
+        error_log("Could not extract profile data for auth type: {$authType}");
+        return null;
     }
 
     /**
@@ -69,37 +100,25 @@ class UserManager
     }
 
     /**
-     * Find user by SIGMA ID
-     */
-    private function findUserBySigmaId(string $sigmaId): ?\WP_User
-    {
-        $users = get_users([
-            'meta_key' => 'sigma_id',
-            'meta_value' => $sigmaId,
-            'number' => 1,
-        ]);
-
-        return !empty($users) ? $users[0] : null;
-    }
-
-    /**
      * Create new WordPress user
      */
-    private function createNewUser(string $sigmaId, ?string $email, ?string $name): ?\WP_User
+    private function createNewUser(int $profileId, string $profileName, string $authType, array $userInfo): ?\WP_User
     {
-        // Use SIGMA ID directly as username (guaranteed unique by SIGMA)
-        $username = $sigmaId;
-        $userEmail = $sigmaId . '@sigma.local';
+        $username = 'profile_' . $profileId;
+        $userEmail = $profileId . '@sigma.local';
+
+        error_log("Creating user with profileName: '{$profileName}'");
 
         $userData = [
             'user_login' => $username,
             'user_email' => $userEmail,
             'user_pass' => wp_generate_password(32, true, true), // Random password
-            'display_name' => $name ?: $username,
-            'first_name' => $this->extractFirstName($name),
-            'last_name' => $this->extractLastName($name),
+            'display_name' => $profileName,
+            'first_name' => $profileName, // Shows in admin user list
             'role' => 'subscriber', // Default role
         ];
+
+        error_log("UserData being sent to wp_insert_user: " . print_r($userData, true));
 
         $userId = wp_insert_user($userData);
 
@@ -108,44 +127,22 @@ class UserManager
             return null;
         }
 
-        // Store SIGMA ID in user meta (this is the authoritative identifier)
-        update_user_meta($userId, 'sigma_id', $sigmaId);
+        // Store SIGMA profile ID in user meta
+        update_user_meta($userId, 'sigma_profile_id', $profileId);
 
-        // Store original SIGMA email for reference (if provided)
-        if ($email) {
-            update_user_meta($userId, 'sigma_email', $email);
-        }
+        // Store authentication type
+        update_user_meta($userId, 'sigma_auth_type', $authType);
+
+        // Store full SIGMA user info for reference
+        update_user_meta($userId, 'sigma_user_info', wp_json_encode($userInfo));
 
         // Mark as SIGMA user
         update_user_meta($userId, 'sigma_user', true);
 
         $user = get_user_by('ID', $userId);
-        error_log("Created new SIGMA user: {$userId} (SIGMA ID: {$sigmaId})");
+        error_log("Created new SIGMA user: {$userId} (ProfileId: {$profileId}, Type: {$authType})");
+        error_log("User first_name after creation: '{$user->first_name}'");
 
         return $user;
-    }
-
-    /**
-     * Extract first name from full name
-     */
-    private function extractFirstName(?string $fullName): string
-    {
-        if (!$fullName) return '';
-
-        $parts = explode(' ', trim($fullName));
-        return $parts[0] ?? '';
-    }
-
-    /**
-     * Extract last name from full name
-     */
-    private function extractLastName(?string $fullName): string
-    {
-        if (!$fullName) return '';
-
-        $parts = explode(' ', trim($fullName));
-        if (count($parts) <= 1) return '';
-
-        return implode(' ', array_slice($parts, 1));
     }
 }

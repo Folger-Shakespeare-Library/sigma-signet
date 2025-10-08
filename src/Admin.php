@@ -98,6 +98,14 @@ class Admin
             'sigma_oidc_settings',
             'sigma_oidc_main'
         );
+
+        add_settings_field(
+            'ip_auth_enabled',
+            __('IP Authentication', 'sigma-signet'),
+            [$this, 'renderIpAuthField'],
+            'sigma_oidc_settings',
+            'sigma_oidc_main'
+        );
     }
 
     /**
@@ -252,6 +260,26 @@ class Admin
         <p class="description">
             <?php _e('Enable this during development to see detailed logs in your WordPress debug log. Disable for production.', 'sigma-signet'); ?>
         </p>
+    <?php
+    }
+
+    /**
+     * Render IP Auth field
+     */
+    public function renderIpAuthField(): void
+    {
+        $value = $this->settings->get('ip_auth_enabled');
+    ?>
+        <label>
+            <input type="checkbox"
+                name="sigma_signet_settings[ip_auth_enabled]"
+                value="1"
+                <?php checked($value, true); ?> />
+            <?php _e('Enable automatic IP-based authentication', 'sigma-signet'); ?>
+        </label>
+        <p class="description">
+            <?php _e('When enabled, visitors from authorized IP addresses will be automatically authenticated. Disable for testing individual logins.', 'sigma-signet'); ?>
+        </p>
 <?php
     }
 
@@ -267,6 +295,7 @@ class Admin
         $sanitized['client_secret'] = sanitize_text_field($input['client_secret'] ?? '');
         $sanitized['redirect_uri'] = esc_url_raw($input['redirect_uri'] ?? '');
         $sanitized['debug_enabled'] = !empty($input['debug_enabled']);
+        $sanitized['ip_auth_enabled'] = !empty($input['ip_auth_enabled']);
 
         // Validate required fields
         if (empty($sanitized['idp_url'])) {
@@ -302,5 +331,30 @@ class Admin
         }
 
         return $sanitized;
+    }
+
+    /**
+     * Show display name for SIGMA users in admin user list
+     */
+    public function showSigmaDisplayName(string $display_name, int $user_id, object $user): string
+    {
+        // Only modify in admin user list context
+        if (!is_admin() || !function_exists('get_current_screen')) {
+            return $display_name;
+        }
+
+        $screen = get_current_screen();
+        if (!$screen || $screen->id !== 'users') {
+            return $display_name;
+        }
+
+        // Check if this is a SIGMA user
+        $isSigmaUser = get_user_meta($user_id, 'sigma_user', true);
+
+        if ($isSigmaUser && !empty($user->display_name)) {
+            return $user->display_name;
+        }
+
+        return $display_name;
     }
 }

@@ -25,8 +25,8 @@ class WordPressIntegration
      */
     public function init(): void
     {
+        add_action('template_redirect', [$this, 'handleLoginRoute'], 1);
         add_action('template_redirect', [$this, 'handleIpAuthentication'], 5);
-        add_action('template_redirect', [$this, 'handleLoginRoute']);
         add_action('template_redirect', [$this, 'handleCallbackRoute']);
     }
 
@@ -35,9 +35,25 @@ class WordPressIntegration
      */
     public function handleIpAuthentication(): void
     {
+        // Skip if IP authentication is disabled
+        if (!$this->settings->get('ip_auth_enabled')) {
+            return;
+        }
+
         // Skip if user is already logged in
         if (is_user_logged_in()) {
             return;
+        }
+
+        // Skip if we're on the callback route
+        $redirectUri = $this->settings->get('redirect_uri');
+        if ($redirectUri) {
+            $callbackPath = parse_url($redirectUri, PHP_URL_PATH);
+            $currentPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+
+            if ($callbackPath === $currentPath) {
+                return; // Don't try IP auth on the callback route
+            }
         }
 
         // Skip if we've already attempted IP auth this session
@@ -141,7 +157,7 @@ class WordPressIntegration
             }
 
             // For other errors, show error page
-            error_log("SIGMA authentication error: {$error}");
+            error_log("SIGMA OIDC: Authentication error - {$error}");
             wp_die('Authentication failed: ' . esc_html($error));
         }
 
@@ -165,6 +181,8 @@ class WordPressIntegration
             }
 
             $this->settings->debugLog("Retrieved user info: " . json_encode($userInfo));
+            $this->settings->debugLog("User sub ID: " . ($userInfo['sub'] ?? 'MISSING'));
+            $this->settings->debugLog("Authentication type: " . ($userInfo['authentication_type'] ?? 'MISSING'));
 
             // Create or update WordPress user
             $user = $this->userManager->findOrCreateUser($userInfo);
