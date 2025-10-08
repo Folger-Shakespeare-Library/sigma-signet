@@ -95,7 +95,7 @@ class Settings
      */
     public function markIpAuthAttempted(): void
     {
-        // Set cookie for 1 hour
-        setcookie('sigma_ip_auth_checked', '1', time() + 3600, '/', '', is_ssl(), true);
+        // Set cookie to expire when browser closes (session cookie)
+        setcookie('sigma_ip_auth_checked', '1', 0, '/', '', is_ssl(), true);
     }
 }
