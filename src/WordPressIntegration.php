@@ -220,7 +220,8 @@ class WordPressIntegration
             $this->settings->debugLog("User logged in successfully, redirecting to home");
 
             // Redirect to home page
-            wp_redirect(home_url());
+            // wp_redirect(home_url());
+            wp_safe_redirect(add_query_arg('welcome', '1', home_url('/')));
             exit;
         }
 
