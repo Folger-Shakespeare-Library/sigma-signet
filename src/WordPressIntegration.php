@@ -29,6 +29,20 @@ class WordPressIntegration
         add_action('template_redirect', [$this, 'handleIpAuthentication'], 5);
         add_action('template_redirect', [$this, 'handleCallbackRoute']);
         add_action('template_redirect', [$this, 'handleLogoutRoute']);
+
+        // Allow OIDC callback parameters in WordPress query vars
+        add_filter('query_vars', [$this, 'addCallbackQueryVars']);
+    }
+
+    /**
+     * Add OIDC callback parameters to allowed query vars
+     */
+    public function addCallbackQueryVars(array $vars): array
+    {
+        $vars[] = 'code';
+        $vars[] = 'error';
+        $vars[] = 'state';
+        return $vars;
     }
 
     /**
@@ -144,15 +158,22 @@ class WordPressIntegration
 
         $this->settings->debugLog('SIGMA callback route detected');
 
+        // Parse query string directly since WordPress may strip query vars in some cases
+        $queryString = $_SERVER['QUERY_STRING'] ?? '';
+        parse_str($queryString, $params);
+
         // Check for error parameter
-        if (isset($_GET['error'])) {
-            $error = sanitize_text_field($_GET['error']);
+        if (isset($params['error'])) {
+            $error = sanitize_text_field($params['error']);
             $this->settings->debugLog("SIGMA authentication error: {$error}");
 
+            $state = $params['state'] ?? '';
+
             // If this is login_required, it means IP auth failed (user not recognized by IP)
-            // This is expected behavior for prompt=none, so just redirect to home
+            // OR the user successfully logged out from SIGMA
+            // This is expected behavior, so just redirect to home
             if ($error === 'login_required') {
-                $this->settings->debugLog("IP authentication failed (login_required) - redirecting to home");
+                $this->settings->debugLog("Login required (IP auth failed or logout complete) - redirecting to home");
                 wp_redirect(home_url());
                 exit;
             }
@@ -163,8 +184,8 @@ class WordPressIntegration
         }
 
         // Check for authorization code
-        if (isset($_GET['code'])) {
-            $code = sanitize_text_field($_GET['code']);
+        if (isset($params['code'])) {
+            $code = sanitize_text_field($params['code']);
             $this->settings->debugLog("SIGMA authentication code received: {$code}");
 
             // Exchange code for tokens
@@ -247,8 +268,11 @@ class WordPressIntegration
         // Get user's IP address
         $ipAddress = $this->getUserIP();
 
-        // Build SIGMA login URL (with prompt=login to show login dialog where user can log out)
+        // Build SIGMA login URL with a state parameter to indicate this is a logout
         $authUrl = $this->oidcClient->buildAuthorizationUrl($ipAddress, home_url());
+
+        // Add state parameter to indicate this is a logout flow
+        $authUrl = add_query_arg('state', base64_encode(json_encode(['action' => 'logout'])), $authUrl);
 
         if (!$authUrl) {
             // If we can't build the URL, just redirect home
