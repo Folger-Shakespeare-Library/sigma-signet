@@ -28,6 +28,7 @@ class WordPressIntegration
         add_action('template_redirect', [$this, 'handleLoginRoute'], 1);
         add_action('template_redirect', [$this, 'handleIpAuthentication'], 5);
         add_action('template_redirect', [$this, 'handleCallbackRoute']);
+        add_action('template_redirect', [$this, 'handleLogoutRoute']);
     }
 
     /**
@@ -219,5 +220,46 @@ class WordPressIntegration
         }
 
         return $_SERVER['REMOTE_ADDR'] ?? '';
+    }
+
+    /**
+     * Handle the logout route
+     */
+    public function handleLogoutRoute(): void
+    {
+        // Check if this is our logout route
+        if (!isset($_GET['sigma_logout'])) {
+            return;
+        }
+
+        if (!$this->oidcClient->isReady()) {
+            // If SIGMA not configured, just do WordPress logout
+            wp_logout();
+            wp_redirect(home_url());
+            exit;
+        }
+
+        $this->settings->debugLog('SIGMA logout initiated');
+
+        // Log out of WordPress first
+        wp_logout();
+
+        // Get user's IP address
+        $ipAddress = $this->getUserIP();
+
+        // Build SIGMA login URL (with prompt=login to show login dialog where user can log out)
+        $authUrl = $this->oidcClient->buildAuthorizationUrl($ipAddress, home_url());
+
+        if (!$authUrl) {
+            // If we can't build the URL, just redirect home
+            wp_redirect(home_url());
+            exit;
+        }
+
+        $this->settings->debugLog("Redirecting to SIGMA login dialog for logout: {$authUrl}");
+
+        // Redirect to SIGMA login dialog where user can log out
+        wp_redirect($authUrl);
+        exit;
     }
 }
