@@ -43,7 +43,8 @@ class OidcClient
             'prompt' => 'login',
             'redirect_uri' => $this->settings->get('redirect_uri'),
             'response_type' => 'code',
-            'scope' => 'openid profile email license profile_extended offline_access',
+            'scope' => 'openid profile email license license_lite profile_extended offline_access',
+            'view_name' => 'fullscreen',
         ];
 
         // Add optional referrer URL if provided
@@ -87,7 +88,8 @@ class OidcClient
             'prompt' => 'none', // This is the key difference - no login screen
             'redirect_uri' => $this->settings->get('redirect_uri'),
             'response_type' => 'code',
-            'scope' => 'openid profile email license profile_extended offline_access',
+            'scope' => 'openid profile email license license_lite profile_extended offline_access',
+            'view_name' => 'fullscreen',
         ];
 
         // Add optional referrer URL if provided
