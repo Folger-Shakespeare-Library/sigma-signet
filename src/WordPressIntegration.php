@@ -124,8 +124,12 @@ class WordPressIntegration
         // Get referrer if available
         $referrer = wp_get_referer();
 
-        // Build authorization URL
-        $authUrl = $this->oidcClient->buildAuthorizationUrl($ipAddress, $referrer);
+        // Generate state for CSRF protection
+        $state = wp_generate_uuid4();
+        set_transient('sigma_oidc_state_' . $state, true, 300); // 5 minute expiry
+
+        // Build authorization URL with state
+        $authUrl = $this->oidcClient->buildAuthorizationUrl($ipAddress, $referrer, $state);
 
         if (!$authUrl) {
             wp_die('Failed to build authorization URL.');
@@ -161,6 +165,21 @@ class WordPressIntegration
         // Parse query string directly since WordPress may strip query vars in some cases
         $queryString = $_SERVER['QUERY_STRING'] ?? '';
         parse_str($queryString, $params);
+
+        // Verify state parameter for CSRF protection (only for login flow, not logout)
+        if (isset($params['code']) && isset($params['state'])) {
+            $state = sanitize_text_field($params['state']);
+            $transient = get_transient('sigma_oidc_state_' . $state);
+
+            if (!$transient) {
+                $this->settings->debugLog("Invalid or expired state parameter: {$state}");
+                wp_die('Invalid state parameter. Please try logging in again.');
+            }
+
+            // Delete transient - state is single-use
+            delete_transient('sigma_oidc_state_' . $state);
+            $this->settings->debugLog("State verified and consumed: {$state}");
+        }
 
         // Check for error parameter
         if (isset($params['error'])) {

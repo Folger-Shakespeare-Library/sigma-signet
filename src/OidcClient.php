@@ -23,7 +23,7 @@ class OidcClient
      * @param string|null $referrerUrl Optional referrer URL
      * @return string|null Authorization URL or null if not configured
      */
-    public function buildAuthorizationUrl(string $ipAddress, ?string $referrerUrl = null): ?string
+    public function buildAuthorizationUrl(string $ipAddress, ?string $referrerUrl = null, ?string $state = null): ?string
     {
         if (!$this->settings->isConfigured()) {
             error_log('Cannot build authorization URL: settings not configured');
@@ -47,6 +47,11 @@ class OidcClient
             'view_name' => 'fullscreen',
         ];
 
+        // Add state parameter if provided (CSRF protection)
+        if ($state) {
+            $params['state'] = $state;
+        }
+
         // Add optional referrer URL if provided
         if ($referrerUrl) {
             $params['referrer_url'] = $referrerUrl;
@@ -68,7 +73,7 @@ class OidcClient
      * @param string|null $referrerUrl Optional referrer URL
      * @return string|null Authorization URL or null if not configured
      */
-    public function buildIpAuthUrl(string $ipAddress, ?string $referrerUrl = null): ?string
+    public function buildIpAuthUrl(string $ipAddress, ?string $referrerUrl = null, ?string $state = null): ?string
     {
         if (!$this->settings->isConfigured()) {
             error_log('Cannot build IP auth URL: settings not configured');
@@ -91,6 +96,12 @@ class OidcClient
             'scope' => 'openid profile email license license_lite profile_extended offline_access',
             'view_name' => 'fullscreen',
         ];
+
+        // Add state parameter if provided (CSRF protection)
+        if ($state) {
+            $params['state'] = $state;
+        }
+
 
         // Add optional referrer URL if provided
         if ($referrerUrl) {
