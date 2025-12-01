@@ -106,6 +106,45 @@ class OidcClient
     }
 
     /**
+     * Build authorization URL for logout
+     * Uses prompt=logout to automatically log out and redirect back
+     *
+     * @param string $ipAddress User's IP address
+     * @return string|null Authorization URL or null if not configured
+     */
+    public function buildLogoutUrl(string $ipAddress): ?string
+    {
+        if (!$this->settings->isConfigured()) {
+            error_log('Cannot build logout URL: settings not configured');
+            return null;
+        }
+
+        $authToken = $this->tokenGenerator->generateAuthToken();
+        if (!$authToken) {
+            error_log('Cannot build logout URL: failed to generate auth token');
+            return null;
+        }
+
+        $params = [
+            'auth_token' => $authToken,
+            'client_id' => $this->settings->get('client_id'),
+            'ip_address' => $ipAddress,
+            'prompt' => 'logout',
+            'redirect_uri' => $this->settings->get('redirect_uri'),
+            'response_type' => 'code',
+            'scope' => 'openid profile email license license_lite profile_extended offline_access',
+            'view_name' => 'fullscreen',
+        ];
+
+        $baseUrl = rtrim($this->settings->get('idp_url'), '/') . '/authorize';
+        $url = $baseUrl . '?' . http_build_query($params);
+
+        $this->settings->debugLog("Built logout URL for client_id: " . $this->settings->get('client_id'));
+
+        return $url;
+    }
+
+    /**
      * Check if client can build authorization URLs
      */
     public function isReady(): bool

@@ -269,22 +269,19 @@ class WordPressIntegration
         // Get user's IP address
         $ipAddress = $this->getUserIP();
 
-        // Build SIGMA login URL with a state parameter to indicate this is a logout
-        $authUrl = $this->oidcClient->buildAuthorizationUrl($ipAddress, home_url());
+        // Build SIGMA logout URL (uses prompt=logout for automatic logout)
+        $logoutUrl = $this->oidcClient->buildLogoutUrl($ipAddress);
 
-        // Add state parameter to indicate this is a logout flow
-        $authUrl = add_query_arg('state', base64_encode(json_encode(['action' => 'logout'])), $authUrl);
-
-        if (!$authUrl) {
+        if (!$logoutUrl) {
             // If we can't build the URL, just redirect home
             wp_redirect(home_url());
             exit;
         }
 
-        $this->settings->debugLog("Redirecting to SIGMA login dialog for logout: {$authUrl}");
+        $this->settings->debugLog("Redirecting to SIGMA for logout: {$logoutUrl}");
 
-        // Redirect to SIGMA login dialog where user can log out
-        wp_redirect($authUrl);
+        // Redirect to SIGMA - will auto-logout and redirect back to our callback
+        wp_redirect($logoutUrl);
         exit;
     }
 }
