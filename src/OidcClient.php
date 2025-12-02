@@ -40,6 +40,7 @@ class OidcClient
             'auth_token' => $authToken,
             'client_id' => $this->settings->get('client_id'),
             'ip_address' => $ipAddress,
+            'login_state' => 'loginform',
             'prompt' => 'login',
             'redirect_uri' => $this->settings->get('redirect_uri'),
             'response_type' => 'code',
