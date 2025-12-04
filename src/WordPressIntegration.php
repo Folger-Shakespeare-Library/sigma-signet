@@ -27,6 +27,7 @@ class WordPressIntegration
      */
     public function init(): void
     {
+        add_action('template_redirect', [$this, 'processFlashMessages'], 1);
         add_action('template_redirect', [$this, 'handleLoginRoute'], 1);
         add_action('template_redirect', [$this, 'handleIpAuthentication'], 5);
         add_action('template_redirect', [$this, 'handleCallbackRoute']);
@@ -230,7 +231,9 @@ class WordPressIntegration
             // Check authorization
             if (!$this->authorizer->isAuthorized($userInfo)) {
                 $this->settings->debugLog("User not authorized for WSB access");
-                wp_die('You do not have access to this resource.');
+                set_transient('sigma_signet_flash_error', 'This account has no valid subscription for this site.', 60);
+                wp_safe_redirect(home_url('/'));
+                exit;
             }
 
             // Create or update WordPress user
@@ -310,5 +313,17 @@ class WordPressIntegration
         // Redirect to SIGMA - will auto-logout and redirect back to our callback
         wp_redirect($logoutUrl);
         exit;
+    }
+
+    /**
+     * Process flash messages early so themes can use them.
+     */
+    public function processFlashMessages(): void
+    {
+        $error = get_transient('sigma_signet_flash_error');
+        if ($error) {
+            delete_transient('sigma_signet_flash_error');
+            do_action('sigma_signet_flash_error', $error);
+        }
     }
 }
