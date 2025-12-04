@@ -44,7 +44,8 @@ class Plugin
             $oidcClient = new OidcClient($this->settings, $tokenGenerator);
             $tokenExchange = new TokenExchange($this->settings);
             $userManager = new UserManager();
-            $this->wpIntegration = new WordPressIntegration($this->settings, $oidcClient, $tokenExchange, $userManager);
+            $authorizer = new Authorizer($this->settings);
+            $this->wpIntegration = new WordPressIntegration($this->settings, $oidcClient, $tokenExchange, $userManager, $authorizer);
             $this->wpIntegration->init();
         }
     }

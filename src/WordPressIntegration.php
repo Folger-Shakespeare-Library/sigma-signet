@@ -11,13 +11,15 @@ class WordPressIntegration
     private OidcClient $oidcClient;
     private TokenExchange $tokenExchange;
     private UserManager $userManager;
+    private Authorizer $authorizer;
 
-    public function __construct(Settings $settings, OidcClient $oidcClient, TokenExchange $tokenExchange, UserManager $userManager)
+    public function __construct(Settings $settings, OidcClient $oidcClient, TokenExchange $tokenExchange, UserManager $userManager, Authorizer $authorizer)
     {
         $this->settings = $settings;
         $this->oidcClient = $oidcClient;
         $this->tokenExchange = $tokenExchange;
         $this->userManager = $userManager;
+        $this->authorizer = $authorizer;
     }
 
     /**
@@ -224,6 +226,12 @@ class WordPressIntegration
             $this->settings->debugLog("Retrieved user info: " . json_encode($userInfo));
             $this->settings->debugLog("User sub ID: " . ($userInfo['sub'] ?? 'MISSING'));
             $this->settings->debugLog("Authentication type: " . ($userInfo['authentication_type'] ?? 'MISSING'));
+
+            // Check authorization
+            if (!$this->authorizer->isAuthorized($userInfo)) {
+                $this->settings->debugLog("User not authorized for WSB access");
+                wp_die('You do not have access to this resource.');
+            }
 
             // Create or update WordPress user
             $user = $this->userManager->findOrCreateUser($userInfo);
