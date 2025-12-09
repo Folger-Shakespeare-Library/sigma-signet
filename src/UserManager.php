@@ -30,6 +30,9 @@ class UserManager
         $profileName = $profileData['profileName'];
         $username = 'profile_' . $profileId;
 
+        // Extract identifier type from organization profiles (USER_PASS takes priority)
+        $identifierType = $this->extractIdentifierType($userInfo);
+
         // Find user by username (which is profile_{profileId})
         $existingUser = get_user_by('login', $username);
         if ($existingUser) {
@@ -42,11 +45,52 @@ class UserManager
                 ]);
             }
 
+            // Update SIGMA meta on every login (these can change)
+            update_user_meta($existingUser->ID, 'sigma_auth_type', $authType);
+            update_user_meta($existingUser->ID, 'sigma_identifier_type', $identifierType);
+            update_user_meta($existingUser->ID, 'sigma_user_info', wp_json_encode($userInfo));
+
             return $existingUser;
         }
 
         // User doesn't exist, create new one
-        return $this->createNewUser($profileId, $profileName, $authType, $userInfo);
+        return $this->createNewUser($profileId, $profileName, $authType, $identifierType, $userInfo);
+    }
+
+    /**
+     * Extract the identifier type from organization profiles
+     * Prioritizes USER_PASS over IP_RANGE
+     *
+     * @param array $userInfo User information from SIGMA
+     * @return string|null The identifier type or null if not found
+     */
+    private function extractIdentifierType(array $userInfo): ?string
+    {
+        $authenticatedProfiles = $userInfo['authenticated_profiles'] ?? [];
+        $organizationProfiles = $authenticatedProfiles['organizationProfiles'] ?? [];
+
+        if (empty($organizationProfiles)) {
+            return null;
+        }
+
+        $foundTypes = [];
+        foreach ($organizationProfiles as $profile) {
+            if (isset($profile['identifierType'])) {
+                $foundTypes[] = $profile['identifierType'];
+            }
+        }
+
+        if (empty($foundTypes)) {
+            return null;
+        }
+
+        // USER_PASS takes priority over IP_RANGE
+        if (in_array('USER_PASS', $foundTypes, true)) {
+            return 'user_pass';
+        }
+
+        // Return first found type (likely IP_RANGE)
+        return strtolower($foundTypes[0]);
     }
 
     /**
@@ -74,7 +118,7 @@ class UserManager
             ];
         }
 
-        error_log("Could not extract profile data for auth type: {$authType}");
+        error_log("SIGMA OIDC: Could not extract profile data for auth type: {$authType}");
         return null;
     }
 
@@ -91,10 +135,10 @@ class UserManager
             wp_set_auth_cookie($user->ID, true);
             do_action('wp_login', $user->user_login, $user);
 
-            error_log("User logged in successfully: {$user->ID}");
+            error_log("SIGMA OIDC: User logged in successfully: {$user->ID}");
             return true;
         } catch (\Exception $e) {
-            error_log("Failed to log in user: " . $e->getMessage());
+            error_log("SIGMA OIDC: Failed to log in user: " . $e->getMessage());
             return false;
         }
     }
@@ -102,28 +146,24 @@ class UserManager
     /**
      * Create new WordPress user
      */
-    private function createNewUser(int $profileId, string $profileName, string $authType, array $userInfo): ?\WP_User
+    private function createNewUser(int $profileId, string $profileName, string $authType, ?string $identifierType, array $userInfo): ?\WP_User
     {
         $username = 'profile_' . $profileId;
         $userEmail = $profileId . '@sigma.local';
 
-        error_log("Creating user with profileName: '{$profileName}'");
-
         $userData = [
             'user_login' => $username,
             'user_email' => $userEmail,
-            'user_pass' => wp_generate_password(32, true, true), // Random password
+            'user_pass' => wp_generate_password(32, true, true),
             'display_name' => $profileName,
-            'first_name' => $profileName, // Shows in admin user list
-            'role' => 'subscriber', // Default role
+            'first_name' => $profileName,
+            'role' => 'subscriber',
         ];
-
-        error_log("UserData being sent to wp_insert_user: " . print_r($userData, true));
 
         $userId = wp_insert_user($userData);
 
         if (is_wp_error($userId)) {
-            error_log('Failed to create user: ' . $userId->get_error_message());
+            error_log('SIGMA OIDC: Failed to create user: ' . $userId->get_error_message());
             return null;
         }
 
@@ -133,6 +173,9 @@ class UserManager
         // Store authentication type
         update_user_meta($userId, 'sigma_auth_type', $authType);
 
+        // Store identifier type
+        update_user_meta($userId, 'sigma_identifier_type', $identifierType);
+
         // Store full SIGMA user info for reference
         update_user_meta($userId, 'sigma_user_info', wp_json_encode($userInfo));
 
@@ -140,8 +183,7 @@ class UserManager
         update_user_meta($userId, 'sigma_user', true);
 
         $user = get_user_by('ID', $userId);
-        error_log("Created new SIGMA user: {$userId} (ProfileId: {$profileId}, Type: {$authType})");
-        error_log("User first_name after creation: '{$user->first_name}'");
+        error_log("SIGMA OIDC: Created new user: {$userId} (ProfileId: {$profileId}, AuthType: {$authType}, IdentifierType: {$identifierType})");
 
         return $user;
     }
