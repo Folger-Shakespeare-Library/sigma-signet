@@ -4,7 +4,7 @@
  * Public helper functions for Sigma Signet
  */
 
-if (!function_exists('sigma_get_user_type')) {
+if (!function_exists('sigma_signet_get_user_type')) {
     /**
      * Get the current user's authentication type
      *
