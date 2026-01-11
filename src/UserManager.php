@@ -33,6 +33,9 @@ class UserManager
         // Extract identifier type from organization profiles (USER_PASS takes priority)
         $identifierType = $this->extractIdentifierType($userInfo);
 
+        // Extract OpenURL resolver if available
+        $openUrl = $this->extractOpenUrl($userInfo);
+
         // Find user by username (which is profile_{profileId})
         $existingUser = get_user_by('login', $username);
         if ($existingUser) {
@@ -50,11 +53,14 @@ class UserManager
             update_user_meta($existingUser->ID, 'sigma_identifier_type', $identifierType);
             update_user_meta($existingUser->ID, 'sigma_user_info', wp_json_encode($userInfo));
 
+            // Update OpenURL resolver (or clear if no longer present)
+            $this->updateOpenUrlMeta($existingUser->ID, $openUrl);
+
             return $existingUser;
         }
 
         // User doesn't exist, create new one
-        return $this->createNewUser($profileId, $profileName, $authType, $identifierType, $userInfo);
+        return $this->createNewUser($profileId, $profileName, $authType, $identifierType, $openUrl, $userInfo);
     }
 
     /**
@@ -89,8 +95,54 @@ class UserManager
             return 'user_pass';
         }
 
-        // Return first found type (likely IP_RANGE)
+        // Return first found type (likely IP_RANGE), lowercased
         return strtolower($foundTypes[0]);
+    }
+
+    /**
+     * Extract OpenURL resolver from organization profiles
+     * Returns the first organization profile that has an openUrl with a resolverUrl
+     *
+     * @param array $userInfo User information from SIGMA
+     * @return array|null Array with 'resolver_url' and optional 'icon_url', or null if not found
+     */
+    private function extractOpenUrl(array $userInfo): ?array
+    {
+        $authenticatedProfiles = $userInfo['authenticated_profiles'] ?? [];
+        $organizationProfiles = $authenticatedProfiles['organizationProfiles'] ?? [];
+
+        foreach ($organizationProfiles as $profile) {
+            if (!empty($profile['openUrl']['resolverUrl'])) {
+                return [
+                    'resolver_url' => $profile['openUrl']['resolverUrl'],
+                    'icon_url' => $profile['openUrl']['iconUrl'] ?? null,
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Update or clear OpenURL meta fields for a user
+     *
+     * @param int $userId WordPress user ID
+     * @param array|null $openUrl OpenURL data or null to clear
+     */
+    private function updateOpenUrlMeta(int $userId, ?array $openUrl): void
+    {
+        if ($openUrl) {
+            update_user_meta($userId, 'sigma_openurl_resolver', $openUrl['resolver_url']);
+            if ($openUrl['icon_url']) {
+                update_user_meta($userId, 'sigma_openurl_icon', $openUrl['icon_url']);
+            } else {
+                delete_user_meta($userId, 'sigma_openurl_icon');
+            }
+        } else {
+            // Clear if no longer present (institution affiliation may have changed)
+            delete_user_meta($userId, 'sigma_openurl_resolver');
+            delete_user_meta($userId, 'sigma_openurl_icon');
+        }
     }
 
     /**
@@ -146,7 +198,7 @@ class UserManager
     /**
      * Create new WordPress user
      */
-    private function createNewUser(int $profileId, string $profileName, string $authType, ?string $identifierType, array $userInfo): ?\WP_User
+    private function createNewUser(int $profileId, string $profileName, string $authType, ?string $identifierType, ?array $openUrl, array $userInfo): ?\WP_User
     {
         $username = 'profile_' . $profileId;
         $userEmail = $profileId . '@sigma.local';
@@ -175,6 +227,9 @@ class UserManager
 
         // Store identifier type
         update_user_meta($userId, 'sigma_identifier_type', $identifierType);
+
+        // Store OpenURL resolver if available
+        $this->updateOpenUrlMeta($userId, $openUrl);
 
         // Store full SIGMA user info for reference
         update_user_meta($userId, 'sigma_user_info', wp_json_encode($userInfo));

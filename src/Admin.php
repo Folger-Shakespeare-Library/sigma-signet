@@ -21,6 +21,10 @@ class Admin
     {
         add_action('admin_menu', [$this, 'addAdminMenu']);
         add_action('admin_init', [$this, 'registerSettings']);
+
+        // User profile hooks
+        add_action('show_user_profile', [$this, 'renderSigmaUserFields']);
+        add_action('edit_user_profile', [$this, 'renderSigmaUserFields']);
     }
 
     /**
@@ -280,7 +284,7 @@ class Admin
         <p class="description">
             <?php _e('When enabled, visitors from authorized IP addresses will be automatically authenticated. Disable for testing individual logins.', 'sigma-signet'); ?>
         </p>
-<?php
+    <?php
     }
 
     /**
@@ -331,6 +335,76 @@ class Admin
         }
 
         return $sanitized;
+    }
+
+    /**
+     * Render SIGMA user fields on user profile page
+     *
+     * @param \WP_User $user The user being edited
+     */
+    public function renderSigmaUserFields(\WP_User $user): void
+    {
+        // Only show for SIGMA users
+        $isSigmaUser = get_user_meta($user->ID, 'sigma_user', true);
+        if (!$isSigmaUser) {
+            return;
+        }
+
+        // Get SIGMA meta
+        $profileId = get_user_meta($user->ID, 'sigma_profile_id', true);
+        $authType = get_user_meta($user->ID, 'sigma_auth_type', true);
+        $identifierType = get_user_meta($user->ID, 'sigma_identifier_type', true);
+        $openUrlResolver = get_user_meta($user->ID, 'sigma_openurl_resolver', true);
+        $openUrlIcon = get_user_meta($user->ID, 'sigma_openurl_icon', true);
+    ?>
+        <h2><?php _e('SIGMA Authentication', 'sigma-signet'); ?></h2>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th><label><?php _e('Profile ID', 'sigma-signet'); ?></label></th>
+                <td>
+                    <code><?php echo esc_html($profileId ?: '—'); ?></code>
+                </td>
+            </tr>
+            <tr>
+                <th><label><?php _e('Authentication Type', 'sigma-signet'); ?></label></th>
+                <td>
+                    <code><?php echo esc_html($authType ?: '—'); ?></code>
+                </td>
+            </tr>
+            <tr>
+                <th><label><?php _e('Identifier Type', 'sigma-signet'); ?></label></th>
+                <td>
+                    <code><?php echo esc_html($identifierType ?: '—'); ?></code>
+                </td>
+            </tr>
+            <tr>
+                <th><label><?php _e('OpenURL Resolver', 'sigma-signet'); ?></label></th>
+                <td>
+                    <?php if ($openUrlResolver) : ?>
+                        <a href="<?php echo esc_url($openUrlResolver); ?>" target="_blank" rel="noopener">
+                            <?php echo esc_html($openUrlResolver); ?>
+                        </a>
+                    <?php else : ?>
+                        <em><?php _e('Not set', 'sigma-signet'); ?></em>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <?php if ($openUrlIcon) : ?>
+                <tr>
+                    <th><label><?php _e('OpenURL Icon', 'sigma-signet'); ?></label></th>
+                    <td>
+                        <img src="<?php echo esc_url($openUrlIcon); ?>" alt="OpenURL Icon" style="max-height: 32px; vertical-align: middle;" />
+                        <a href="<?php echo esc_url($openUrlIcon); ?>" target="_blank" rel="noopener" style="margin-left: 8px;">
+                            <?php echo esc_html($openUrlIcon); ?>
+                        </a>
+                    </td>
+                </tr>
+            <?php endif; ?>
+        </table>
+        <p class="description">
+            <?php _e('These values are managed by SIGMA and updated on each login.', 'sigma-signet'); ?>
+        </p>
+<?php
     }
 
     /**
