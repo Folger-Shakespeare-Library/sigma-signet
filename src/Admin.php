@@ -25,6 +25,8 @@ class Admin
         // User profile hooks
         add_action('show_user_profile', [$this, 'renderSigmaUserFields']);
         add_action('edit_user_profile', [$this, 'renderSigmaUserFields']);
+        add_action('personal_options_update', [$this, 'saveSigmaUserFields']);
+        add_action('edit_user_profile_update', [$this, 'saveSigmaUserFields']);
     }
 
     /**
@@ -356,55 +358,118 @@ class Admin
         $identifierType = get_user_meta($user->ID, 'sigma_identifier_type', true);
         $openUrlResolver = get_user_meta($user->ID, 'sigma_openurl_resolver', true);
         $openUrlIcon = get_user_meta($user->ID, 'sigma_openurl_icon', true);
+
+        wp_nonce_field('sigma_signet_user_meta', 'sigma_signet_user_nonce');
     ?>
         <h2><?php _e('SIGMA Authentication', 'sigma-signet'); ?></h2>
+        <p class="description" style="margin-bottom: 1em;">
+            <?php _e('These values are managed by SIGMA and will be overwritten on next login.', 'sigma-signet'); ?>
+        </p>
         <table class="form-table" role="presentation">
             <tr>
-                <th><label><?php _e('Profile ID', 'sigma-signet'); ?></label></th>
+                <th><label for="sigma_profile_id"><?php _e('Profile ID', 'sigma-signet'); ?></label></th>
                 <td>
-                    <code><?php echo esc_html($profileId ?: '—'); ?></code>
+                    <input type="text" name="sigma_profile_id" id="sigma_profile_id"
+                        value="<?php echo esc_attr($profileId); ?>" class="regular-text" />
                 </td>
             </tr>
             <tr>
-                <th><label><?php _e('Authentication Type', 'sigma-signet'); ?></label></th>
+                <th><label for="sigma_auth_type"><?php _e('Authentication Type', 'sigma-signet'); ?></label></th>
                 <td>
-                    <code><?php echo esc_html($authType ?: '—'); ?></code>
+                    <select name="sigma_auth_type" id="sigma_auth_type">
+                        <option value="" <?php selected($authType, ''); ?>>—</option>
+                        <option value="named" <?php selected($authType, 'named'); ?>>named</option>
+                        <option value="anonymous" <?php selected($authType, 'anonymous'); ?>>anonymous</option>
+                    </select>
                 </td>
             </tr>
             <tr>
-                <th><label><?php _e('Identifier Type', 'sigma-signet'); ?></label></th>
+                <th><label for="sigma_identifier_type"><?php _e('Identifier Type', 'sigma-signet'); ?></label></th>
                 <td>
-                    <code><?php echo esc_html($identifierType ?: '—'); ?></code>
+                    <select name="sigma_identifier_type" id="sigma_identifier_type">
+                        <option value="" <?php selected($identifierType, ''); ?>>—</option>
+                        <option value="user_pass" <?php selected($identifierType, 'user_pass'); ?>>user_pass</option>
+                        <option value="ip_range" <?php selected($identifierType, 'ip_range'); ?>>ip_range</option>
+                    </select>
                 </td>
             </tr>
             <tr>
-                <th><label><?php _e('OpenURL Resolver', 'sigma-signet'); ?></label></th>
+                <th><label for="sigma_openurl_resolver"><?php _e('OpenURL Resolver', 'sigma-signet'); ?></label></th>
                 <td>
-                    <?php if ($openUrlResolver) : ?>
-                        <a href="<?php echo esc_url($openUrlResolver); ?>" target="_blank" rel="noopener">
-                            <?php echo esc_html($openUrlResolver); ?>
-                        </a>
-                    <?php else : ?>
-                        <em><?php _e('Not set', 'sigma-signet'); ?></em>
+                    <input type="url" name="sigma_openurl_resolver" id="sigma_openurl_resolver"
+                        value="<?php echo esc_attr($openUrlResolver); ?>" class="regular-text" />
+                </td>
+            </tr>
+            <tr>
+                <th><label for="sigma_openurl_icon"><?php _e('OpenURL Icon', 'sigma-signet'); ?></label></th>
+                <td>
+                    <input type="url" name="sigma_openurl_icon" id="sigma_openurl_icon"
+                        value="<?php echo esc_attr($openUrlIcon); ?>" class="regular-text" />
+                    <?php if ($openUrlIcon) : ?>
+                        <p><img src="<?php echo esc_url($openUrlIcon); ?>" alt="OpenURL Icon" style="max-height: 32px; margin-top: 8px;" /></p>
                     <?php endif; ?>
                 </td>
             </tr>
-            <?php if ($openUrlIcon) : ?>
-                <tr>
-                    <th><label><?php _e('OpenURL Icon', 'sigma-signet'); ?></label></th>
-                    <td>
-                        <img src="<?php echo esc_url($openUrlIcon); ?>" alt="OpenURL Icon" style="max-height: 32px; vertical-align: middle;" />
-                        <a href="<?php echo esc_url($openUrlIcon); ?>" target="_blank" rel="noopener" style="margin-left: 8px;">
-                            <?php echo esc_html($openUrlIcon); ?>
-                        </a>
-                    </td>
-                </tr>
-            <?php endif; ?>
         </table>
-        <p class="description">
-            <?php _e('These values are managed by SIGMA and updated on each login.', 'sigma-signet'); ?>
-        </p>
 <?php
+    }
+
+    /**
+     * Save SIGMA user fields from user profile page
+     *
+     * @param int $userId The user ID being saved
+     */
+    public function saveSigmaUserFields(int $userId): void
+    {
+        // Verify nonce
+        if (
+            !isset($_POST['sigma_signet_user_nonce']) ||
+            !wp_verify_nonce($_POST['sigma_signet_user_nonce'], 'sigma_signet_user_meta')
+        ) {
+            return;
+        }
+
+        // Check permissions
+        if (!current_user_can('edit_user', $userId)) {
+            return;
+        }
+
+        // Only save for SIGMA users
+        $isSigmaUser = get_user_meta($userId, 'sigma_user', true);
+        if (!$isSigmaUser) {
+            return;
+        }
+
+        // Save fields
+        if (isset($_POST['sigma_profile_id'])) {
+            update_user_meta($userId, 'sigma_profile_id', sanitize_text_field($_POST['sigma_profile_id']));
+        }
+
+        if (isset($_POST['sigma_auth_type'])) {
+            update_user_meta($userId, 'sigma_auth_type', sanitize_text_field($_POST['sigma_auth_type']));
+        }
+
+        if (isset($_POST['sigma_identifier_type'])) {
+            update_user_meta($userId, 'sigma_identifier_type', sanitize_text_field($_POST['sigma_identifier_type']));
+        }
+
+        if (isset($_POST['sigma_openurl_resolver'])) {
+            $resolver = esc_url_raw($_POST['sigma_openurl_resolver']);
+            if ($resolver) {
+                update_user_meta($userId, 'sigma_openurl_resolver', $resolver);
+            } else {
+                delete_user_meta($userId, 'sigma_openurl_resolver');
+            }
+        }
+
+        if (isset($_POST['sigma_openurl_icon'])) {
+            $icon = esc_url_raw($_POST['sigma_openurl_icon']);
+            if ($icon) {
+                update_user_meta($userId, 'sigma_openurl_icon', $icon);
+            } else {
+                delete_user_meta($userId, 'sigma_openurl_icon');
+            }
+        }
     }
 
     /**
