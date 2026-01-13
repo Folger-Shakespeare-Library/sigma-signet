@@ -30,9 +30,6 @@ class Plugin
 
     private function init(): void
     {
-        $isConfigured = $this->settings->isConfigured() ? 'configured' : 'not configured';
-        error_log("SigmaSignet\Plugin initialized ($isConfigured)");
-
         // Initialize WordPress integration if we're in WordPress context
         if (function_exists('add_action')) {
             // Initialize admin interface
