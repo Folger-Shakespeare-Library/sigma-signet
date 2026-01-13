@@ -58,6 +58,11 @@ class WordPressIntegration
             return;
         }
 
+        // Skip if IP auth already failed this request cycle
+        if (isset($_GET['sigma_ip_skip'])) {
+            return;
+        }
+
         // Skip if user is already logged in
         if (is_user_logged_in()) {
             return;
@@ -196,7 +201,7 @@ class WordPressIntegration
             // This is expected behavior, so just redirect to home
             if ($error === 'login_required') {
                 $this->settings->debugLog("Login required (IP auth failed or logout complete) - redirecting to home");
-                wp_redirect(home_url());
+                wp_redirect(home_url('?sigma_ip_skip=1'));
                 exit;
             }
 
