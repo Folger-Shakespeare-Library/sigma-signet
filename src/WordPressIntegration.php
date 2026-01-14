@@ -53,6 +53,13 @@ class WordPressIntegration
      */
     public function handleIpAuthentication(): void
     {
+        // Skip if explicitly disabled via query parameter (prevents redirect loops)
+        // Also mark as attempted so cookie-supporting bots won't re-auth on subsequent pages
+        if (isset($_GET['guest'])) {
+            $this->settings->markIpAuthAttempted();
+            return;
+        }
+
         // Skip if IP authentication is disabled
         if (!$this->settings->get('ip_auth_enabled')) {
             return;
@@ -198,10 +205,10 @@ class WordPressIntegration
 
             // If this is login_required, it means IP auth failed (user not recognized by IP)
             // OR the user successfully logged out from SIGMA
-            // This is expected behavior, so just redirect to home
+            // This is expected behavior, so just redirect to home with guest parameter to prevent loop
             if ($error === 'login_required') {
                 $this->settings->debugLog("Login required (IP auth failed or logout complete) - redirecting to home");
-                wp_redirect(home_url('?sigma_ip_skip=1'));
+                wp_redirect(home_url('?guest=1'));
                 exit;
             }
 
