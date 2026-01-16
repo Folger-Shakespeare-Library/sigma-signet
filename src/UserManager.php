@@ -16,6 +16,7 @@ class UserManager
     private const META_USER_FLAG = 'sigma_user';
     private const META_USER_INFO = 'sigma_user_info';
     private const META_OPENURL_RESOLVER = 'sigma_openurl_resolver';
+    private const META_LAST_LOGIN = 'sigma_last_login';
 
     /**
      * Find or create WordPress user from SIGMA user info.
@@ -47,6 +48,10 @@ class UserManager
         try {
             wp_set_current_user($user->ID);
             wp_set_auth_cookie($user->ID, true);
+
+            // Track last login date
+            $this->updateLastLoginDate($user->ID);
+
             do_action('wp_login', $user->user_login, $user);
 
             return true;
@@ -154,5 +159,21 @@ class UserManager
         } else {
             delete_user_meta($userId, self::META_OPENURL_RESOLVER);
         }
+    }
+
+    /**
+     * Update the last login date for a user.
+     */
+    private function updateLastLoginDate(int $userId): void
+    {
+        update_user_meta($userId, self::META_LAST_LOGIN, current_time('mysql'));
+    }
+
+    /**
+     * Get the last login date for a user.
+     */
+    public static function getLastLoginDate(int $userId): ?string
+    {
+        return get_user_meta($userId, self::META_LAST_LOGIN, true) ?: null;
     }
 }

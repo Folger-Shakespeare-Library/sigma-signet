@@ -27,6 +27,12 @@ class Admin
         add_action('edit_user_profile', [$this, 'renderSigmaUserFields']);
         add_action('personal_options_update', [$this, 'saveSigmaUserFields']);
         add_action('edit_user_profile_update', [$this, 'saveSigmaUserFields']);
+
+        // User list columns
+        add_filter('manage_users_columns', [$this, 'addLastLoginColumn']);
+        add_filter('manage_users_custom_column', [$this, 'renderLastLoginColumn'], 10, 3);
+        add_filter('manage_users_sortable_columns', [$this, 'makeLastLoginColumnSortable']);
+        add_action('pre_get_users', [$this, 'handleLastLoginSort']);
     }
 
     /**
@@ -495,5 +501,65 @@ class Admin
         }
 
         return $display_name;
+    }
+
+    /**
+     * Add Last Login column to users list
+     */
+    public function addLastLoginColumn(array $columns): array
+    {
+        $columns['sigma_last_login'] = __('Last Login', 'sigma-signet');
+        return $columns;
+    }
+
+    /**
+     * Render content for Last Login column
+     */
+    public function renderLastLoginColumn(string $output, string $column_name, int $user_id): string
+    {
+        if ($column_name === 'sigma_last_login') {
+            $lastLogin = UserManager::getLastLoginDate($user_id);
+
+            if ($lastLogin) {
+                $timestamp = strtotime($lastLogin);
+                if ($timestamp) {
+                    $output = sprintf(
+                        '<span title="%s">%s</span>',
+                        esc_attr(wp_date('Y-m-d H:i:s', $timestamp)),
+                        esc_html(human_time_diff($timestamp, current_time('timestamp')) . ' ago')
+                    );
+                }
+            } else {
+                $output = '<span class="description">Never</span>';
+            }
+        }
+
+        return $output;
+    }
+
+    /**
+     * Make Last Login column sortable
+     */
+    public function makeLastLoginColumnSortable(array $columns): array
+    {
+        $columns['sigma_last_login'] = 'sigma_last_login';
+        return $columns;
+    }
+
+    /**
+     * Handle sorting by last login date
+     */
+    public function handleLastLoginSort(\WP_User_Query $query): void
+    {
+        if (!is_admin() || !$query->is_main_query()) {
+            return;
+        }
+
+        $orderby = $query->get('orderby');
+        if ($orderby === 'sigma_last_login') {
+            $query->set('meta_key', 'sigma_last_login');
+            $query->set('orderby', 'meta_value');
+            $query->set('meta_type', 'DATETIME');
+        }
     }
 }
