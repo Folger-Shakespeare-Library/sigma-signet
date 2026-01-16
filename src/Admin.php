@@ -551,26 +551,31 @@ class Admin
      */
     public function handleLastLoginSort(\WP_User_Query $query): void
     {
-        if (!is_admin() || !$query->is_main_query()) {
+        if (!is_admin()) {
             return;
         }
 
         $orderby = $query->get('orderby');
         if ($orderby === 'sigma_last_login') {
+            // Include all users, whether they have the meta key or not
             $query->set('meta_query', [
                 'relation' => 'OR',
-                'last_login_clause' => [
+                'has_login' => [
                     'key' => 'sigma_last_login',
-                    'compare' => 'EXISTS'
+                    'compare' => 'EXISTS',
+                    'type' => 'DATETIME'
                 ],
-                'no_login_clause' => [
+                'no_login' => [
                     'key' => 'sigma_last_login',
                     'compare' => 'NOT EXISTS'
                 ]
             ]);
+
+            // Sort by the meta query clauses
+            $order = $query->get('order') ?: 'DESC';
             $query->set('orderby', [
-                'last_login_clause' => $query->get('order') ?: 'DESC',
-                'no_login_clause' => 'ASC'
+                'has_login' => $order,
+                'no_login' => ($order === 'DESC') ? 'ASC' : 'DESC'  // Put "never logged in" users at appropriate end
             ]);
         }
     }
