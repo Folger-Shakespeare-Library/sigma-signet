@@ -257,7 +257,9 @@ class WordPressIntegration
             $this->settings->debugLog("User created/updated: {$user->user_login}");
 
             // Log the user in
-            wp_set_auth_cookie($user->ID);
+            if (!$this->userManager->loginUser($user)) {
+                wp_die('Failed to log in user.');
+            }
 
             $this->settings->debugLog("User logged in successfully, redirecting to home");
 
