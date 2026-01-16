@@ -557,9 +557,21 @@ class Admin
 
         $orderby = $query->get('orderby');
         if ($orderby === 'sigma_last_login') {
-            $query->set('meta_key', 'sigma_last_login');
-            $query->set('orderby', 'meta_value');
-            $query->set('meta_type', 'DATETIME');
+            $query->set('meta_query', [
+                'relation' => 'OR',
+                'last_login_clause' => [
+                    'key' => 'sigma_last_login',
+                    'compare' => 'EXISTS'
+                ],
+                'no_login_clause' => [
+                    'key' => 'sigma_last_login',
+                    'compare' => 'NOT EXISTS'
+                ]
+            ]);
+            $query->set('orderby', [
+                'last_login_clause' => $query->get('order') ?: 'DESC',
+                'no_login_clause' => 'ASC'
+            ]);
         }
     }
 }
