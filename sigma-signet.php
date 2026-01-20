@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Sigma Signet
  * Description: WordPress OIDC integration plugin for SIGMA authentication system
- * Version: 0.2.11
+ * Version: 0.2.12
  * Author: Seán Stickle (Folger Shakespeare Library)
  * Text Domain: sigma-signet
  */

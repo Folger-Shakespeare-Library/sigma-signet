@@ -102,6 +102,11 @@ class WordPressIntegration
         // Get user's IP address
         $ipAddress = $this->getUserIP();
 
+        // Debug: log all IP-related headers
+        $this->settings->debugLog("REMOTE_ADDR: " . ($_SERVER['REMOTE_ADDR'] ?? 'not set'));
+        $this->settings->debugLog("HTTP_X_FORWARDED_FOR: " . ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? 'not set'));
+        $this->settings->debugLog("HTTP_X_REAL_IP: " . ($_SERVER['HTTP_X_REAL_IP'] ?? 'not set'));
+
         // Get referrer if available
         $referrer = wp_get_referer();
 
