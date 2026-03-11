@@ -96,9 +96,6 @@ class WordPressIntegration
             return;
         }
 
-        // Mark that we're attempting IP auth to avoid loops
-        $this->settings->markIpAuthAttempted();
-
         // Get user's IP address
         $ipAddress = $this->getUserIP();
 
@@ -181,6 +178,9 @@ class WordPressIntegration
         }
 
         $this->settings->debugLog('SIGMA callback route detected');
+
+        // Mark IP auth as attempted now that Sigma has returned control
+        $this->settings->markIpAuthAttempted();
 
         // Parse query string directly since WordPress may strip query vars in some cases
         $queryString = $_SERVER['QUERY_STRING'] ?? '';
